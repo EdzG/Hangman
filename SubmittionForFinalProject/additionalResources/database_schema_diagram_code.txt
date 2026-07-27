@@ -1,0 +1,18 @@
+// Use DBML to define your database structure
+// Docs: https://dbml.dbdiagram.io/docs
+// Use this link and insert the code: https://dbdiagram.io/d
+
+Table wordSet {
+  setId integer(6) [primary key, not null, increment]
+  setName varchar(20) [not null]
+  numOfWords integer [not null]
+}
+
+Table Words {
+  wordId integer [primary key, not null, increment]
+  wordName varchar(255) [not null]
+  definition text(255) [not null]
+  setId integer(6)
+}
+
+Ref: wordSet.setId < Words.setId
