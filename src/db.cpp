@@ -1,38 +1,52 @@
-#include "functions.h"
+#include "db.h"
+#include <filesystem>
+#include <iostream>
 
-int open_db_connection() {
-    try {
-        sql::mysql::MySQL_Driver* driver;
-        sql::Connection* con;
+// Mirrors sql/schema.sql — see that file for the human-readable copy.
+static const char* SCHEMA_SQL = R"SQL(
+CREATE TABLE wordSet (
+    setId      INTEGER PRIMARY KEY AUTOINCREMENT,
+    setName    TEXT NOT NULL,
+    numOfWords INTEGER NOT NULL DEFAULT 0
+);
 
-        driver = sql::mysql::get_mysql_driver_instance();
-        con = driver->connect(DB_HOST, DB_USER, DB_PASSWORD);
+CREATE TABLE Words (
+    wordId     INTEGER PRIMARY KEY AUTOINCREMENT,
+    wordName   TEXT NOT NULL,
+    definition TEXT NOT NULL,
+    setId      INTEGER NOT NULL REFERENCES wordSet(setId)
+);
 
-        con->setSchema(DB_SCHEMA);
+INSERT INTO wordSet (setName, numOfWords) VALUES ('computer science', 4);
 
-        sql::Statement* stmt;
-        stmt = con->createStatement();
+INSERT INTO Words (wordName, definition, setId) VALUES
+    ('Computer Science', 'The scientific study of computation, applied to both hardware and software, covering both theoretical and practical concerns.', 1),
+    ('complexity', 'The way that a solution to a problem scales as the size of the input increases, considering both the number of computational steps and the memory space required.', 1),
+    ('Browser', 'A piece of software that enables a user to locate, retrieve and display information on the world wide web.', 1),
+    ('Function', 'A small section of computational code that performs a specific operation. In particular, a function takes inputs, or arguments, and returns outputs, or results.', 1);
+)SQL";
 
-        
-        std::string selectDataSQL = "SELECT * FROM words";
+sqlite3* db_open(const std::string& path) {
+	bool needsSeed = !std::filesystem::exists(path);
 
-        sql::ResultSet* res = stmt->executeQuery(selectDataSQL);
+	sqlite3* db = nullptr;
+	if (sqlite3_open(path.c_str(), &db) != SQLITE_OK) {
+		std::cerr << "Failed to open database: " << sqlite3_errmsg(db) << std::endl;
+		sqlite3_close(db);
+		return nullptr;
+	}
 
-        // Loop through the result set and display data
-        int count = 0;
-        while (res->next()) {
-            std::cout << " Definition " << ++count << ": " << res->getString("definition") << std::endl;
-        }
+	sqlite3_exec(db, "PRAGMA foreign_keys = ON;", nullptr, nullptr, nullptr);
 
-        delete res;
-        delete stmt;
-        delete con;
-    }
-    catch (sql::SQLException& e) {
-        std::cerr << "SQL Error: " << e.what() << std::endl;
-    }
+	if (needsSeed) {
+		char* errMsg = nullptr;
+		if (sqlite3_exec(db, SCHEMA_SQL, nullptr, nullptr, &errMsg) != SQLITE_OK) {
+			std::cerr << "Failed to initialize database: " << errMsg << std::endl;
+			sqlite3_free(errMsg);
+			sqlite3_close(db);
+			return nullptr;
+		}
+	}
 
-    return 0; 
+	return db;
 }
-
-

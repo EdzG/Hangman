@@ -14,9 +14,7 @@ void Formatting::charactersCase(char* input)
 
 void Formatting::color(int k)
 {
-	HANDLE  hConsole;
-	hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-	SetConsoleTextAttribute(hConsole, k);
+	std::cout << "\x1b[" << k << "m";
 }
 
 //***********Game GUI functions******************
@@ -49,7 +47,7 @@ void print_menu() {
 	std::string about = "|ABOUT";
 	std::string quit = "|QUIT";
 	std::string create_word_set = "|CREATE WORD SET";
-	print_title(); 
+	print_title();
 	print_line(START, END);
 	print_menu_option(start, "1");
 	print_menu_option(about, "2");
@@ -59,35 +57,21 @@ void print_menu() {
 
 }
 
-void print_start_menu() {
-	system("cls");
-	print_title(); 
-	sql::mysql::MySQL_Driver* driver;
-	sql::Connection* con;
-
-	driver = sql::mysql::get_mysql_driver_instance();
-	con = driver->connect(DB_HOST, DB_USER, DB_PASSWORD);
-
-	con->setSchema(DB_SCHEMA);
-
-	sql::Statement* stmt;
-	stmt = con->createStatement();
-	std::string selectDataSQL = "SELECT * FROM wordSet";
-	sql::ResultSet* res = stmt->executeQuery(selectDataSQL);
+void print_start_menu(sqlite3* db) {
+	clear_screen();
+	print_title();
 
 	print_line(START, END);
-	int count = 0;
-	while (res->next()) {
-		std::string setName = res->getString("setName");
-		std::string setId = std::to_string(res->getInt("setId"));
+	sqlite3_stmt* stmt;
+	sqlite3_prepare_v2(db, "SELECT setId, setName FROM wordSet", -1, &stmt, nullptr);
+	while (sqlite3_step(stmt) == SQLITE_ROW) {
+		std::string setName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+		std::string setId = std::to_string(sqlite3_column_int(stmt, 0));
 		print_menu_option(setName, setId);
-		count++;
 	}
+	sqlite3_finalize(stmt);
 	print_menu_option("Go Back", "-1");
 	print_line(START, END);
-	delete res;
-	delete stmt;
-	delete con;
 }
 
 void print_definition(const std::string& definition) {
@@ -120,7 +104,7 @@ void print_definition(const std::string& definition) {
 }
 
 void print_about() {
-	system("cls");
+	clear_screen();
 	print_line(START, END);
 	std::cout << "|  Hangman is a word-guessing game where one player thinks of a word and the   |" << std::endl;
 	std::cout << "|  other player tries to guess it by suggesting letters. The word is           |" << std::endl;
@@ -143,37 +127,29 @@ void print_about() {
 
 //*******************Game Functions**********************************
 
-Game::Game(int id) : setId(id), max_word_id(0), stage(0), driver(nullptr), con(nullptr), stmt(nullptr), res(nullptr), pstmt(nullptr), current_word_id(0) {
+Game::Game(sqlite3* db, int id) : db(db), setId(id), max_word_id(0), stage(0), current_word_id(0), guessing(nullptr) {
 	for (int i = 0; i < 26; i++) {
 		alphabet[i] = ' ';
 	}
 
-	// Connecting to the database
-	driver = sql::mysql::get_mysql_driver_instance();
-	con = driver->connect(DB_HOST, DB_USER, DB_PASSWORD);
-	con->setSchema(DB_SCHEMA);
-	stmt = con->createStatement();
-
-	std::string selectDataSQL = "SELECT numOfWords FROM wordSet WHERE setId = " + std::to_string(setId);
-	res = stmt->executeQuery(selectDataSQL);
-
-	if (res->next()) {
-		max_word_id = res->getInt("numOfWords");
+	sqlite3_stmt* stmt;
+	sqlite3_prepare_v2(db, "SELECT numOfWords FROM wordSet WHERE setId = ?", -1, &stmt, nullptr);
+	sqlite3_bind_int(stmt, 1, setId);
+	if (sqlite3_step(stmt) == SQLITE_ROW) {
+		max_word_id = sqlite3_column_int(stmt, 0);
 	}
-	//choosing a word from the database; 
-	int num = generate_random_number(); 
-	
-	getWordInfo(num); 
+	sqlite3_finalize(stmt);
+
+	//choosing a word from the database;
+	int num = generate_random_number();
+
+	getWordInfo(num);
 
 }
 
 // Destructor
 Game::~Game() {
-	if (res) delete res;
-	if (stmt) delete stmt;
-	if (con) delete con;
-	if (pstmt) delete pstmt; 
-	if (guessing) delete[] guessing;
+	delete[] guessing;
 }
 
 // draw_hangman method
@@ -229,7 +205,7 @@ void Game::draw_hangman() const{
 	"                                    |\n"
 	"                               ========="
 	};
-	
+
 	if (stage >= 0 && stage < hangmanStages.size()) {
 		std::cout << hangmanStages[stage] << std::endl;
 	}
@@ -258,18 +234,22 @@ int Game::generate_random_number() {
 }
 
 void Game::getWordInfo(int num) {
-	std::string selectDataSQL = "SELECT * FROM words WHERE setId = " + std::to_string(setId);
-	res = stmt->executeQuery(selectDataSQL);
-	bool gotInfo = false; 
-	while (res->next()) {
+	sqlite3_stmt* stmt;
+	sqlite3_prepare_v2(db, "SELECT wordName, definition FROM Words WHERE setId = ?", -1, &stmt, nullptr);
+	sqlite3_bind_int(stmt, 1, setId);
+
+	bool gotInfo = false;
+	while (sqlite3_step(stmt) == SQLITE_ROW) {
 		if (num == 1) {
-			word = res->getString("wordName");
-			definition = res->getString("definition");
-			gotInfo = true; 
-			break; 
+			word = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+			definition = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+			gotInfo = true;
+			break;
 		}
 		num--;
 	}
+	sqlite3_finalize(stmt);
+
 	if (!gotInfo) {
 		throw std::runtime_error("Word not found in the database.");
 	}
@@ -282,26 +262,26 @@ void Game::getWordInfo(int num) {
 	size_t length = word.length();
 	guessing = new char[length];
 	for (size_t i = 0; i < length; i++) {
-		if (word[i] == ' ') guessing[i] = ' '; 
+		if (word[i] == ' ') guessing[i] = ' ';
 		else guessing[i] = '_';
 	}
 }
 void Game::print_game_view() {
-	system("cls"); 
+	clear_screen();
 	print_title();
-	draw_hangman(); 
+	draw_hangman();
 	print_line(START, END);
-	print_definition(definition); 
+	print_definition(definition);
 	print_line(START, END);
-	std::cout << std::endl; 
+	std::cout << std::endl;
 	print_line(START, END);
 	print_definition(alphabet);
 	print_line(START, END);
-	std::cout << "Guess the word: "; 
+	std::cout << "Guess the word: ";
 	for (size_t i = 0; i < word.length(); i++) {
-		std::cout << guessing[i] << ' '; 
+		std::cout << guessing[i] << ' ';
 	}
-	std::cout << std::endl; 
+	std::cout << std::endl;
 }
 void Game::play_game() {
 	char letter, chr;
@@ -350,33 +330,22 @@ void Game::play_game() {
 	print_game_view();
 	if (wordGuessed) {
 		std::cout << "Congratulations! You've guessed the word!" << std::endl;
-		system("pause"); 
+		pause_console();
 	}
 	else {
 		std::cout << "Game over! The word was: " << word << std::endl;
-		system("pause");
+		pause_console();
 	}
 }
 
-void create_wordSet() {
+void create_wordSet(sqlite3* db) {
 
-	system("cls"); 
-	print_title(); 
-	print_line(START, END); 
-	std::string description = "Creating a new set of words, please follow the instructions below!"; 
-	print_definition(description); 
-	print_line(START, END); 
-	// Connecting to the database
-	sql::mysql::MySQL_Driver* driver;
-	sql::Connection* con;
-	sql::Statement* stmt;
-	sql::ResultSet* res;
-	sql::PreparedStatement* pstmt;
-
-	driver = sql::mysql::get_mysql_driver_instance();
-	con = driver->connect(DB_HOST, DB_USER, DB_PASSWORD);
-	con->setSchema(DB_SCHEMA);
-	stmt = con->createStatement();
+	clear_screen();
+	print_title();
+	print_line(START, END);
+	std::string description = "Creating a new set of words, please follow the instructions below!";
+	print_definition(description);
+	print_line(START, END);
 
 	std::string setName;
 	int numOfWords;
@@ -385,55 +354,34 @@ void create_wordSet() {
 	std::cin >> setName;
 	std::cout << "Enter the number of words you want to insert: ";
 	std::cin >> numOfWords;
-	std::cout << std::endl; 
-	try {
-		// Use a prepared statement to prevent SQL injection
-		std::string insertDataSQL = "INSERT INTO wordSet(setName, numOfWords) VALUES (?, ?)";
-		std::unique_ptr<sql::PreparedStatement> pstmt(con->prepareStatement(insertDataSQL));
-		pstmt->setString(1, setName);
-		pstmt->setInt(2, numOfWords);
-		pstmt->execute();
-		pstmt.reset();
+	std::cout << std::endl;
 
-		std::string selectDataSQL = "SELECT setId FROM wordSet WHERE setName = ?";
-		pstmt.reset(con->prepareStatement(selectDataSQL));
-		pstmt->setString(1, setName);
-		std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
+	sqlite3_stmt* stmt = nullptr;
+	sqlite3_prepare_v2(db, "INSERT INTO wordSet(setName, numOfWords) VALUES (?, ?)", -1, &stmt, nullptr);
+	sqlite3_bind_text(stmt, 1, setName.c_str(), -1, SQLITE_TRANSIENT);
+	sqlite3_bind_int(stmt, 2, numOfWords);
+	sqlite3_step(stmt);
+	sqlite3_finalize(stmt);
 
-		int id = 0;
-		if (res->next()) {
-			id = res->getInt("setId");
-		}
-		res.reset();
-		pstmt.reset();
+	int id = static_cast<int>(sqlite3_last_insert_rowid(db));
 
-		std::string wordName, def;
-		for (int i = 0; i < numOfWords; i++) {
-			std::cout << "Enter the word: ";
-			std::cin >> wordName;
-			std::cout << "Enter the definition: ";
-			std::cin.ignore(); // Ignore the newline character left in the input buffer
-			std::getline(std::cin, def);
+	std::string wordName, def;
+	for (int i = 0; i < numOfWords; i++) {
+		std::cout << "Enter the word: ";
+		std::cin >> wordName;
+		std::cout << "Enter the definition: ";
+		std::cin.ignore(); // Ignore the newline character left in the input buffer
+		std::getline(std::cin, def);
 
-			insertDataSQL = "INSERT INTO Words(wordName, definition, setId) VALUES (?, ?, ?)";
-			pstmt.reset(con->prepareStatement(insertDataSQL));
-			pstmt->setString(1, wordName);
-			pstmt->setString(2, def);
-			pstmt->setInt(3, id);
-			pstmt->execute();
-			pstmt.reset();
-			std::cout << std::endl; 
-		}
-	}
-	catch (sql::SQLException& e) {
-		std::cerr << "SQL error: " << e.what() << std::endl;
-	}
-	catch (std::exception& e) {
-		std::cerr << "Error: " << e.what() << std::endl;
+		sqlite3_prepare_v2(db, "INSERT INTO Words(wordName, definition, setId) VALUES (?, ?, ?)", -1, &stmt, nullptr);
+		sqlite3_bind_text(stmt, 1, wordName.c_str(), -1, SQLITE_TRANSIENT);
+		sqlite3_bind_text(stmt, 2, def.c_str(), -1, SQLITE_TRANSIENT);
+		sqlite3_bind_int(stmt, 3, id);
+		sqlite3_step(stmt);
+		sqlite3_finalize(stmt);
+		std::cout << std::endl;
 	}
 
 	std::cout << "Congrats, the data has been entered! " << std::endl;
-	system("pause");
+	pause_console();
 }
-
-

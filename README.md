@@ -1,10 +1,9 @@
 # Hangman
 
-A console Hangman game for Windows, written in C++ with a MySQL-backed word
-bank. Words and their definitions are stored in a database and organized
-into sets ("word sets"); players pick a set, guess letters against a
-randomly chosen word from it, and can create their own word sets from the
-game menu.
+A cross-platform console Hangman game in C++ with a SQLite-backed word bank.
+Words and their definitions are stored in a database and organized into sets
+("word sets"); players pick a set, guess letters against a randomly chosen
+word from it, and can create their own word sets from the game menu.
 
 Originally built as the final project for the Programming II course at
 National Dong Hwa University (freshman year, second semester). The full
@@ -13,51 +12,42 @@ project report is in [`docs/final-project-report.pdf`](docs/final-project-report
 ## Features
 
 - Classic Hangman gameplay with ASCII-art stages drawn to the console
-- Words pulled at random (without repeats) from a MySQL database
+- Words pulled at random (without repeats) from a SQLite database
 - Each word comes with a definition shown as a hint
 - Multiple word sets, selectable from the start menu
 - In-game flow for creating a new word set and populating it with words
+- Zero setup: the database is created and seeded automatically on first run
 
 ## Tech stack
 
-- C++ (Visual Studio / MSVC, Windows console app)
-- MySQL, via [MySQL Connector/C++](https://dev.mysql.com/downloads/connector/cpp/) (JDBC-style API)
+- C++17
+- [SQLite](https://www.sqlite.org/) (vendored amalgamation, no external DB server)
+- CMake
 
 ## Project structure
 
 ```
-src/                  Game source (functions.h/.cpp, hangman.cpp, db.cpp)
-src/db_config.h.example   Template for local DB credentials (copy to db_config.h)
-sql/schema.sql        Database schema + seed data
-sql/schema_diagram.dbml   DBML schema diagram (view at dbdiagram.io)
-docs/                  Original project report
-HangmanGame.sln/.vcxproj  Visual Studio project files
+src/                        Game source (functions.h/.cpp, hangman.cpp, db.h/.cpp, console.h/.cpp)
+sql/schema.sql               Database schema + seed data (reference copy; embedded in src/db.cpp)
+sql/schema_diagram.dbml      DBML schema diagram (view at dbdiagram.io)
+docs/                        Original project report
+third_party/sqlite3/         Vendored SQLite amalgamation
+CMakeLists.txt                Build definition
 ```
 
 ## Building
 
-Requires Windows, Visual Studio 2022 (or later) with the "Desktop
-development with C++" workload, a running MySQL server, and MySQL
-Connector/C++ 8.4.
+Requires a C++17 compiler and CMake 3.16+ — no external dependencies, no
+database server to install.
 
-1. **Set up the database**
-   ```sql
-   -- in a MySQL client, run:
-   source sql/schema.sql
-   ```
-2. **Configure credentials**
-   ```
-   copy src\db_config.h.example src\db_config.h
-   ```
-   Edit `src\db_config.h` with your MySQL host/user/password. This file is
-   gitignored so your credentials never get committed.
-3. **Point the project at MySQL Connector/C++**
-   Open `HangmanGame.sln`, then either define a `MYSQL_CONNECTOR_CPP_DIR`
-   user/environment variable pointing at your Connector/C++ install (e.g.
-   `C:\mysql-connector-c++-8.4.0-winx64`), or edit the project's
-   VC++ Directories / Additional Include Directories directly to match
-   where you installed it.
-4. Build and run (Release|x64 recommended).
+```sh
+cmake -B build
+cmake --build build
+./build/hangman        # Windows: build\Debug\hangman.exe (or Release, per generator)
+```
+
+The first run creates `hangman.db` in the working directory and seeds it
+with a starter word set; subsequent runs reuse it.
 
 ## Playing
 
@@ -70,4 +60,6 @@ Connector/C++ 8.4.
 
 ## License
 
-MIT — see [LICENSE.md](LICENSE.md).
+MIT — see [LICENSE.md](LICENSE.md). The vendored SQLite amalgamation
+(`third_party/sqlite3/`) is public domain — see
+[`third_party/sqlite3/README.md`](third_party/sqlite3/README.md).
