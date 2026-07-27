@@ -1,4 +1,19 @@
-*.exe
-CppProperties.json
-.vs
-game/
+cat > .gitignore << 'EOF'
+# Build output
+x64/
+HangManGame/
+*.obj
+*.pdb
+*.ipdb
+*.iobj
+*.log
+*.tlog
+*.recipe
+
+# Binaries & archives
+*.dll
+*.7z
+
+# VS user settings
+*.vcxproj.user
+EOF
