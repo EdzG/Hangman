@@ -22,9 +22,9 @@
     <VCProjectVersion>17.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
     <ProjectGuid>{0d25fac9-bae9-4f20-8532-35f257a12d53}</ProjectGuid>
-    <RootNamespace>testingSQL</RootNamespace>
+    <RootNamespace>HangmanGame</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
-    <ProjectName>HangManGame</ProjectName>
+    <ProjectName>HangmanGame</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -71,9 +71,14 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <!--
+    NOTE: The MySQL Connector/C++ paths below are placeholders. Point them at
+    your own local install (see README.md "Building" for setup steps) before
+    building, e.g. C:\path\to\mysql-connector-c++-8.4.0-winx64
+  -->
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <IncludePath>C:\Users\Eder\Documents\NDHU\SecondSemester\mysql-connector-c++-8.4.0-winx64\lib64\vs14;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\Users\Eder\Documents\NDHU\SecondSemester\mysql-connector-c++-8.4.0-winx64\lib64\vs14;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(MYSQL_CONNECTOR_CPP_DIR)\lib64\vs14;$(IncludePath)</IncludePath>
+    <LibraryPath>$(MYSQL_CONNECTOR_CPP_DIR)\lib64\vs14;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -123,7 +128,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>C:\Users\Eder\Documents\NDHU\SecondSemester\mysql-connector-c++-8.4.0-winx64\include\jdbc</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(MYSQL_CONNECTOR_CPP_DIR)\include\jdbc</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -133,16 +138,17 @@
       <AdditionalDependencies>mysqlcppconn.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /y  "C:\Users\Eder\Documents\NDHU\SecondSemester\mysql-connector-c++-8.4.0-winx64\lib64\*.dll"</Command>
+      <Command>xcopy /y  "$(MYSQL_CONNECTOR_CPP_DIR)\lib64\*.dll" "$(OutDir)"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="db.cpp" />
-    <ClCompile Include="functions.cpp" />
-    <ClCompile Include="hangman.cpp" />
+    <ClCompile Include="src\db.cpp" />
+    <ClCompile Include="src\functions.cpp" />
+    <ClCompile Include="src\hangman.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="functions.h" />
+    <ClInclude Include="src\functions.h" />
+    <ClInclude Include="src\db_config.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

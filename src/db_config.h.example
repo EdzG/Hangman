@@ -1,0 +1,10 @@
+#pragma once
+
+// Copy this file to db_config.h (same folder) and fill in your local
+// MySQL credentials. db_config.h is gitignored so real credentials
+// are never committed.
+
+constexpr const char* DB_HOST = "tcp://127.0.0.1:3306";
+constexpr const char* DB_USER = "root";
+constexpr const char* DB_PASSWORD = "your_password_here";
+constexpr const char* DB_SCHEMA = "hangman";

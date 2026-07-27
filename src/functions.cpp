@@ -66,10 +66,10 @@ void print_start_menu() {
 	sql::Connection* con;
 
 	driver = sql::mysql::get_mysql_driver_instance();
-	con = driver->connect("tcp://localhost:3306", "root", "password");
+	con = driver->connect(DB_HOST, DB_USER, DB_PASSWORD);
 
-	con->setSchema("hangman");
-	 
+	con->setSchema(DB_SCHEMA);
+
 	sql::Statement* stmt;
 	stmt = con->createStatement();
 	std::string selectDataSQL = "SELECT * FROM wordSet";
@@ -150,8 +150,8 @@ Game::Game(int id) : setId(id), max_word_id(0), stage(0), driver(nullptr), con(n
 
 	// Connecting to the database
 	driver = sql::mysql::get_mysql_driver_instance();
-	con = driver->connect("tcp://localhost:3306", "root", "password");
-	con->setSchema("hangman");
+	con = driver->connect(DB_HOST, DB_USER, DB_PASSWORD);
+	con->setSchema(DB_SCHEMA);
 	stmt = con->createStatement();
 
 	std::string selectDataSQL = "SELECT numOfWords FROM wordSet WHERE setId = " + std::to_string(setId);
@@ -374,8 +374,8 @@ void create_wordSet() {
 	sql::PreparedStatement* pstmt;
 
 	driver = sql::mysql::get_mysql_driver_instance();
-	con = driver->connect("tcp://localhost:3306", "root", "password");
-	con->setSchema("hangman");
+	con = driver->connect(DB_HOST, DB_USER, DB_PASSWORD);
+	con->setSchema(DB_SCHEMA);
 	stmt = con->createStatement();
 
 	std::string setName;

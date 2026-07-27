@@ -6,9 +6,9 @@ int open_db_connection() {
         sql::Connection* con;
 
         driver = sql::mysql::get_mysql_driver_instance();
-        con = driver->connect("tcp://localhost:3306", "root", "password");
+        con = driver->connect(DB_HOST, DB_USER, DB_PASSWORD);
 
-        con->setSchema("hangman");
+        con->setSchema(DB_SCHEMA);
 
         sql::Statement* stmt;
         stmt = con->createStatement();

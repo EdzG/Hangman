@@ -16,6 +16,7 @@
 #include <cppconn/statement.h>
 #include <cppconn/prepared_statement.h>
 
+#include "db_config.h"
 
 class Formatting {
 public:
@@ -64,7 +65,7 @@ private:
 	int stage; // stage of the hangman (max stage is 6)
 	char alphabet[26];
 	int current_word_id;
-	char* guessing; 
+	char* guessing;
 	std::string word;
 	std::string definition;
 	sql::mysql::MySQL_Driver* driver;
