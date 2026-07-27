@@ -1,133 +1,252 @@
 #include "functions.h"
 
-//*******************Only color function was used ****
-void Formatting::charactersCase(char* input)
-{
-	for (int i = 0; input[i] != '\0'; ++i)
-	{
-		if (input[i] >= 'a' && input[i] <= 'z')
-		{
-			input[i] = input[i] - 32;
-		}
-	}
+#include <algorithm>
+#include <cctype>
+#include <memory>
+#include <random>
+#include <stdexcept>
+#include <vector>
+
+using namespace ftxui;
+
+//***********Top-level screen components******************
+
+ftxui::Component MainMenuComponent(std::function<void(int)> on_select) {
+	auto entries = std::make_shared<std::vector<std::string>>(std::vector<std::string>{
+		"START", "ABOUT", "CREATE WORD SET", "QUIT"
+	});
+	auto selected = std::make_shared<int>(0);
+
+	MenuOption option;
+	option.on_enter = [on_select, selected] { on_select(*selected + 1); };
+	auto menu = Menu(entries.get(), selected.get(), option);
+
+	return Renderer(menu, [menu, entries, selected] {
+		return vbox({
+			text("HANGMAN") | bold | hcenter,
+			separator(),
+			menu->Render(),
+		}) | border | size(WIDTH, GREATER_THAN, 30);
+	});
 }
 
-void Formatting::color(int k)
-{
-	std::cout << "\x1b[" << k << "m";
-}
+ftxui::Component StartMenuComponent(sqlite3* db, std::function<void(int)> on_select) {
+	auto ids = std::make_shared<std::vector<int>>();
+	auto labels = std::make_shared<std::vector<std::string>>();
 
-//***********Game GUI functions******************
-
-void print_line(int start, int end) {
-	for (int i = start; i < end; i++) {
-		if (i == 0 || i == 79) std::cout << "+";
-		else std::cout << "-";
-	}
-	std::cout << std::endl;
-}
-void print_menu_option(const std::string& str, const std::string& choice) {
-	size_t length = END - str.length();
-	std::cout << str;
-	for (size_t i = 0; i < length; i++) {
-		if (i == length - choice.length() - 1) std::cout << choice << "|";
-		else std::cout << " ";
-	}
-	std::cout << std::endl;
-}
-
-void print_title() {
-	std::cout << std::endl;
-	std::cout << std::setw(40) << "HANGMAN" << std::endl;
-}
-void print_menu() {
-
-	Formatting::color(PURPLE);
-	std::string start = "|START";
-	std::string about = "|ABOUT";
-	std::string quit = "|QUIT";
-	std::string create_word_set = "|CREATE WORD SET";
-	print_title();
-	print_line(START, END);
-	print_menu_option(start, "1");
-	print_menu_option(about, "2");
-	print_menu_option(create_word_set, "3");
-	print_menu_option(quit, "4");
-	print_line(START, END);
-
-}
-
-void print_start_menu(sqlite3* db) {
-	clear_screen();
-	print_title();
-
-	print_line(START, END);
 	sqlite3_stmt* stmt;
 	sqlite3_prepare_v2(db, "SELECT setId, setName FROM wordSet", -1, &stmt, nullptr);
 	while (sqlite3_step(stmt) == SQLITE_ROW) {
-		std::string setName = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
-		std::string setId = std::to_string(sqlite3_column_int(stmt, 0));
-		print_menu_option(setName, setId);
+		ids->push_back(sqlite3_column_int(stmt, 0));
+		labels->push_back(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)));
 	}
 	sqlite3_finalize(stmt);
-	print_menu_option("Go Back", "-1");
-	print_line(START, END);
+	ids->push_back(-1);
+	labels->push_back("Go Back");
+
+	auto selected = std::make_shared<int>(0);
+	MenuOption option;
+	option.on_enter = [on_select, ids, selected] { on_select((*ids)[*selected]); };
+	auto menu = Menu(labels.get(), selected.get(), option);
+
+	return Renderer(menu, [menu, labels, ids, selected] {
+		return vbox({
+			text("Choose a word set") | bold | hcenter,
+			separator(),
+			menu->Render(),
+		}) | border | size(WIDTH, GREATER_THAN, 30);
+	});
 }
 
-void print_definition(const std::string& definition) {
-	std::istringstream iss(definition);
-	std::string word;
-	std::vector<std::string> words;
+ftxui::Component AboutComponent(std::function<void()> on_back) {
+	auto renderer = Renderer([](bool) {
+		std::string body =
+			"Hangman is a word-guessing game where one player thinks of a word and "
+			"the other player tries to guess it by suggesting letters. The word is "
+			"represented by a series of blank spaces, each corresponding to a "
+			"letter in the word. A part of a stick figure (the hangman) is drawn "
+			"for each incorrect letter guessed. If a correct letter is chosen, all "
+			"the blank spaces belonging to that letter will be filled. The game is "
+			"won if the guesser identifies the word before completing the hangman "
+			"drawing. Conversely, the game is lost if the entire hangman is drawn "
+			"before the word is guessed. In this version of the game, the player's "
+			"word will be chosen at random from a database. The player will also "
+			"be given the definition of the word that is to be guessed. The game "
+			"also gives the player an option to create their own set of words.";
+		return vbox({
+			text("About") | bold | hcenter,
+			separator(),
+			paragraph(body),
+			separator(),
+			text("Press Enter to go back") | dim | hcenter,
+		}) | border | size(WIDTH, LESS_THAN, 80);
+	});
 
-	// Split the string into words
-	while (iss >> word) {
-		words.push_back(word);
-	}
-	std::string line = "|  ";
-	for (const auto& w : words) {
-		// Check if adding the next word would exceed the line length
-		if (line.length() + w.length() + 2 > 79) { // 79 because "|  " adds 2 at the start and 1 for space, and we need room for the closing "|"
-			std::cout << line;
-			std::cout << std::string(80 - line.length() - 1, ' ') << "|" << std::endl; // Padding and closing
-			line = "|  " + w + " ";
+	return CatchEvent(renderer, [on_back](Event event) {
+		if (event == Event::Return || event == Event::Escape) {
+			on_back();
+			return true;
 		}
-		else {
-			line += w + " ";
+		return false;
+	});
+}
+
+//***********Create Word Set wizard******************
+
+namespace {
+struct WordSetState {
+	sqlite3* db = nullptr;
+	int step = 0; // 0=set name, 1=word count, 2=word[i], 3=definition[i], 4=done
+	std::string setName;
+	std::string wordCountStr;
+	int numOfWords = 0;
+	sqlite3_int64 setDbId = 0;
+	int currentWordIndex = 0;
+	std::string currentWordName;
+	std::string currentDefinition;
+	std::string error;
+};
+}
+
+ftxui::Component CreateWordSetComponent(sqlite3* db, std::function<void()> on_done) {
+	auto state = std::make_shared<WordSetState>();
+	state->db = db;
+
+	auto name_input = Input(&state->setName, "set name");
+	auto count_input = Input(&state->wordCountStr, "number of words");
+	auto word_input = Input(&state->currentWordName, "word");
+	auto def_input = Input(&state->currentDefinition, "definition");
+
+	auto submit = [state]() {
+		state->error.clear();
+		switch (state->step) {
+		case 0:
+			if (state->setName.empty()) {
+				state->error = "Set name can't be empty.";
+				return;
+			}
+			state->step = 1;
+			break;
+		case 1: {
+			try {
+				size_t pos = 0;
+				state->numOfWords = std::stoi(state->wordCountStr, &pos);
+				if (pos != state->wordCountStr.size() || state->numOfWords <= 0) {
+					throw std::invalid_argument("");
+				}
+			}
+			catch (...) {
+				state->error = "Enter a positive whole number.";
+				return;
+			}
+			sqlite3_stmt* stmt;
+			sqlite3_prepare_v2(state->db, "INSERT INTO wordSet(setName, numOfWords) VALUES (?, ?)", -1, &stmt, nullptr);
+			sqlite3_bind_text(stmt, 1, state->setName.c_str(), -1, SQLITE_TRANSIENT);
+			sqlite3_bind_int(stmt, 2, state->numOfWords);
+			sqlite3_step(stmt);
+			sqlite3_finalize(stmt);
+			state->setDbId = sqlite3_last_insert_rowid(state->db);
+			state->step = 2;
+			break;
 		}
-	}
+		case 2:
+			if (state->currentWordName.empty()) {
+				state->error = "Word can't be empty.";
+				return;
+			}
+			state->step = 3;
+			break;
+		case 3: {
+			if (state->currentDefinition.empty()) {
+				state->error = "Definition can't be empty.";
+				return;
+			}
+			sqlite3_stmt* stmt;
+			sqlite3_prepare_v2(state->db, "INSERT INTO Words(wordName, definition, setId) VALUES (?, ?, ?)", -1, &stmt, nullptr);
+			sqlite3_bind_text(stmt, 1, state->currentWordName.c_str(), -1, SQLITE_TRANSIENT);
+			sqlite3_bind_text(stmt, 2, state->currentDefinition.c_str(), -1, SQLITE_TRANSIENT);
+			sqlite3_bind_int(stmt, 3, static_cast<int>(state->setDbId));
+			sqlite3_step(stmt);
+			sqlite3_finalize(stmt);
 
-	// Print the last line if there's any remaining content
-	if (!line.empty()) {
-		std::cout << line;
-		std::cout << std::string(80 - line.length() - 1, ' ') << "|" << std::endl; // Padding and closing
-	}
+			state->currentWordName.clear();
+			state->currentDefinition.clear();
+			state->currentWordIndex++;
+			state->step = (state->currentWordIndex >= state->numOfWords) ? 4 : 2;
+			break;
+		}
+		default:
+			break;
+		}
+	};
+
+	auto renderer = Renderer([state, name_input, count_input, word_input, def_input](bool) {
+		Elements body;
+		body.push_back(text("Create a new word set") | bold | hcenter);
+		body.push_back(separator());
+
+		switch (state->step) {
+		case 0:
+			body.push_back(text("Enter the name of the set:"));
+			body.push_back(name_input->Render());
+			break;
+		case 1:
+			body.push_back(text("Set: " + state->setName));
+			body.push_back(text("How many words do you want to add?"));
+			body.push_back(count_input->Render());
+			break;
+		case 2:
+			body.push_back(text("Word " + std::to_string(state->currentWordIndex + 1) +
+				" / " + std::to_string(state->numOfWords)));
+			body.push_back(text("Enter the word:"));
+			body.push_back(word_input->Render());
+			break;
+		case 3:
+			body.push_back(text("Word " + std::to_string(state->currentWordIndex + 1) +
+				" / " + std::to_string(state->numOfWords) + ": " + state->currentWordName));
+			body.push_back(text("Enter its definition:"));
+			body.push_back(def_input->Render());
+			break;
+		default:
+			body.push_back(text("Done! \"" + state->setName + "\" has been saved.") | color(Color::Green));
+			body.push_back(text("Press Enter to go back to the menu.") | dim);
+			break;
+		}
+
+		if (!state->error.empty()) {
+			body.push_back(separator());
+			body.push_back(text(state->error) | color(Color::Red));
+		}
+
+		return vbox(body) | border | size(WIDTH, LESS_THAN, 80);
+	});
+
+	return CatchEvent(renderer, [state, name_input, count_input, word_input, def_input, submit, on_done](Event event) {
+		if (event == Event::Return) {
+			if (state->step == 4) {
+				on_done();
+			}
+			else {
+				submit();
+			}
+			return true;
+		}
+		ftxui::Component active;
+		switch (state->step) {
+		case 0: active = name_input; break;
+		case 1: active = count_input; break;
+		case 2: active = word_input; break;
+		case 3: active = def_input; break;
+		default: break;
+		}
+		return active ? active->OnEvent(event) : false;
+	});
 }
 
-void print_about() {
-	clear_screen();
-	print_line(START, END);
-	std::cout << "|  Hangman is a word-guessing game where one player thinks of a word and the   |" << std::endl;
-	std::cout << "|  other player tries to guess it by suggesting letters. The word is           |" << std::endl;
-	std::cout << "|  represented by a series of blank spaces, each corresponding to a letter     |" << std::endl;
-	std::cout << "|  in the word. A part of a stick figure (the hangman) is drawn for each       |" << std::endl;
-	std::cout << "|  incorrect letter guessed. If a correct letter is chosen, all the blank      |" << std::endl;
-	std::cout << "|  spaces belonging to that letter will be filled. The game is won if the      |" << std::endl;
-	std::cout << "|  guesser identifies the word before completing the hangman drawing.          |" << std::endl;
-	std::cout << "|  Conversely, the game is lost if the entire hangman is drawn before the      |" << std::endl;
-	std::cout << "|  word is guessed. In this version of the game, the player's word will be     |" << std::endl;
-	std::cout << "|  chosen at random from a database. The player will also be given the         |" << std::endl;
-	std::cout << "|  definition of the word that is to be guessed. The game also gives the       |" << std::endl;
-	std::cout << "|  player an option to create their own set of words.                          |" << std::endl;
-	std::cout << "|                                                                              |" << std::endl;
-	std::cout << "|                                                                              |" << std::endl;
-	std::cout << "|  GO BACK                                                               -1    |" << std::endl;
-	print_line(START, END);
-}
+//***********Game******************
 
-
-//*******************Game Functions**********************************
-
-Game::Game(sqlite3* db, int id) : db(db), setId(id), max_word_id(0), stage(0), current_word_id(0), guessing(nullptr) {
+Game::Game(sqlite3* db, int id)
+	: db(db), setId(id), max_word_id(0), stage(0), current_word_id(0), over(false), won(false) {
 	for (int i = 0; i < 26; i++) {
 		alphabet[i] = ' ';
 	}
@@ -140,83 +259,12 @@ Game::Game(sqlite3* db, int id) : db(db), setId(id), max_word_id(0), stage(0), c
 	}
 	sqlite3_finalize(stmt);
 
-	//choosing a word from the database;
 	int num = generate_random_number();
-
 	getWordInfo(num);
-
 }
-
-// Destructor
-Game::~Game() {
-	delete[] guessing;
-}
-
-// draw_hangman method
-void Game::draw_hangman() const{
-	std::vector<std::string> hangmanStages = {
-	"                                +---+\n"
-	"                                |   |\n"
-	"                                    |\n"
-	"                                    |\n"
-	"                                    |\n"
-	"                                    |\n"
-	"                               =========",
-	"                                +---+\n"
-	"                                |   |\n"
-	"                                O   |\n"
-	"                                    |\n"
-	"                                    |\n"
-	"                                    |\n"
-	"                               =========",
-	"                                +---+\n"
-	"                                |   |\n"
-	"                                O   |\n"
-	"                                |   |\n"
-	"                                    |\n"
-	"                                    |\n"
-	"                               =========",
-	"                                +---+\n"
-	"                                |   |\n"
-	"                                O   |\n"
-	"                               /|   |\n"
-	"                                    |\n"
-	"                                    |\n"
-	"                               =========",
-	"                                +---+\n"
-	"                                |   |\n"
-	"                                O   |\n"
-	"                               /|\\  |\n"
-	"                                    |\n"
-	"                                    |\n"
-	"                               =========",
-	"                                +---+\n"
-	"                                |   |\n"
-	"                                O   |\n"
-	"                               /|\\  |\n"
-	"                               /    |\n"
-	"                                    |\n"
-	"                               =========",
-	"                                +---+\n"
-	"                                |   |\n"
-	"                                O   |\n"
-	"                               /|\\  |\n"
-	"                               / \\  |\n"
-	"                                    |\n"
-	"                               ========="
-	};
-
-	if (stage >= 0 && stage < hangmanStages.size()) {
-		std::cout << hangmanStages[stage] << std::endl;
-	}
-	else {
-		std::cerr << "Invalid stage: " << stage << std::endl;
-	}
-}
-
 
 int Game::generate_random_number() {
-	if (usedNumbers.size() >= max_word_id) {
+	if (usedNumbers.size() >= static_cast<size_t>(max_word_id)) {
 		throw std::runtime_error("All possible numbers have been used.");
 	}
 
@@ -254,134 +302,132 @@ void Game::getWordInfo(int num) {
 		throw std::runtime_error("Word not found in the database.");
 	}
 
-
-	// Delete the old guessing array if it exists to avoid memory leaks
-	delete[] guessing;
-
-	// Allocate memory for the guessing array
-	size_t length = word.length();
-	guessing = new char[length];
-	for (size_t i = 0; i < length; i++) {
-		if (word[i] == ' ') guessing[i] = ' ';
-		else guessing[i] = '_';
-	}
-}
-void Game::print_game_view() {
-	clear_screen();
-	print_title();
-	draw_hangman();
-	print_line(START, END);
-	print_definition(definition);
-	print_line(START, END);
-	std::cout << std::endl;
-	print_line(START, END);
-	print_definition(alphabet);
-	print_line(START, END);
-	std::cout << "Guess the word: ";
+	guessing.assign(word.length(), '_');
 	for (size_t i = 0; i < word.length(); i++) {
-		std::cout << guessing[i] << ' ';
+		if (word[i] == ' ') guessing[i] = ' ';
 	}
-	std::cout << std::endl;
 }
-void Game::play_game() {
-	char letter, chr;
-	bool wordGuessed = false;
-	while (stage < 6 && !wordGuessed) {
-		print_game_view();
-		std::cout << "Enter a letter: ";
-		std::cin >> letter;
 
-		// Convert to uppercase
-		letter = toupper(letter);
+void Game::guessLetter(char letter) {
+	if (over) return;
 
-		// Check if letter has already been used
-		int index = letter - 'A';
-		if (alphabet[index] != ' ') {
-			std::cout << "You have already guessed that letter. Try again." << std::endl;
-			continue;
-		}
+	letter = static_cast<char>(std::toupper(static_cast<unsigned char>(letter)));
+	if (letter < 'A' || letter > 'Z') return;
 
-		// Update used letters array
-		alphabet[index] = letter;
+	int index = letter - 'A';
+	if (alphabet[index] != ' ') return; // already guessed
+	alphabet[index] = letter;
 
-		bool inWord = false;
-		for (size_t i = 0; i < word.length(); i++) {
-			chr = toupper(word[i]);
-			if (chr == letter) {
-				guessing[i] = letter;
-				inWord = true;
-			}
-		}
-
-		if (!inWord) {
-			stage++;
-		}
-
-		// Check if the entire word is guessed
-		wordGuessed = true;
-		for (size_t i = 0; i < word.length(); i++) {
-			if (guessing[i] == '_') {
-				wordGuessed = false;
-				break;
-			}
+	bool inWord = false;
+	for (size_t i = 0; i < word.length(); i++) {
+		if (std::toupper(static_cast<unsigned char>(word[i])) == letter) {
+			guessing[i] = letter;
+			inWord = true;
 		}
 	}
 
-	print_game_view();
+	if (!inWord) stage++;
+
+	bool wordGuessed = guessing.find('_') == std::string::npos;
 	if (wordGuessed) {
-		std::cout << "Congratulations! You've guessed the word!" << std::endl;
-		pause_console();
+		over = true;
+		won = true;
+	}
+	else if (stage >= 6) {
+		over = true;
+		won = false;
+	}
+}
+
+namespace {
+// clang-format off
+const std::vector<std::vector<std::string>> kHangmanStages = {
+	{"+---+", "|   |", "    |", "    |", "    |", "    |", "========="},
+	{"+---+", "|   |", "O   |", "    |", "    |", "    |", "========="},
+	{"+---+", "|   |", "O   |", "|   |", "    |", "    |", "========="},
+	{"+---+", "|   |", "O   |", "/|   |", "    |", "    |", "========="},
+	{"+---+", "|   |", "O   |", "/|\\  |", "    |", "    |", "========="},
+	{"+---+", "|   |", "O   |", "/|\\  |", "/    |", "    |", "========="},
+	{"+---+", "|   |", "O   |", "/|\\  |", "/ \\  |", "    |", "========="},
+};
+// clang-format on
+}
+
+ftxui::Element Game::Render() const {
+	Color stage_color = Color::White;
+	if (stage > 4) stage_color = Color::Red;
+	else if (stage > 2) stage_color = Color::Yellow;
+
+	Elements hangman_lines;
+	for (const std::string& line : kHangmanStages[static_cast<size_t>(stage)]) {
+		hangman_lines.push_back(text(line));
+	}
+	Element hangman_art = vbox(hangman_lines) | color(stage_color) | bold;
+
+	Elements alphabet_row;
+	for (int i = 0; i < 26; i++) {
+		char letter = alphabet[i];
+		std::string s(1, letter == ' ' ? static_cast<char>('A' + i) : letter);
+		Element e = text(s);
+		if (letter == ' ') {
+			e = e | dim;
+		}
+		else {
+			bool correct = std::any_of(word.begin(), word.end(), [&](char c) {
+				return std::toupper(static_cast<unsigned char>(c)) == letter;
+			});
+			e = e | color(correct ? Color::Green : Color::Red) | bold;
+		}
+		alphabet_row.push_back(e);
+		alphabet_row.push_back(text(" "));
+	}
+
+	std::string blanks;
+	for (char g : guessing) {
+		blanks += g;
+		blanks += ' ';
+	}
+
+	Element status;
+	if (over) {
+		status = won
+			? text("You guessed it! Press any key to continue...") | color(Color::Green) | bold
+			: text("Game over. The word was: " + word + " -- press any key to continue...") | color(Color::Red) | bold;
 	}
 	else {
-		std::cout << "Game over! The word was: " << word << std::endl;
-		pause_console();
+		status = text("Type a letter to guess (" + std::to_string(6 - stage) + " misses left)") | dim;
 	}
+
+	return vbox({
+		text("HANGMAN") | bold | hcenter,
+		separator(),
+		hangman_art | hcenter,
+		separator(),
+		paragraph(definition) | border,
+		separator(),
+		hbox(alphabet_row) | hcenter,
+		separator(),
+		text("Word: " + blanks) | hcenter,
+		separator(),
+		status | hcenter,
+	}) | border | size(WIDTH, LESS_THAN, 90);
 }
 
-void create_wordSet(sqlite3* db) {
+ftxui::Component Game::GameComponent(std::function<void(bool)> on_finished) {
+	auto renderer = Renderer([this](bool) { return Render(); });
 
-	clear_screen();
-	print_title();
-	print_line(START, END);
-	std::string description = "Creating a new set of words, please follow the instructions below!";
-	print_definition(description);
-	print_line(START, END);
-
-	std::string setName;
-	int numOfWords;
-
-	std::cout << "Enter the name of the set of words: ";
-	std::cin >> setName;
-	std::cout << "Enter the number of words you want to insert: ";
-	std::cin >> numOfWords;
-	std::cout << std::endl;
-
-	sqlite3_stmt* stmt = nullptr;
-	sqlite3_prepare_v2(db, "INSERT INTO wordSet(setName, numOfWords) VALUES (?, ?)", -1, &stmt, nullptr);
-	sqlite3_bind_text(stmt, 1, setName.c_str(), -1, SQLITE_TRANSIENT);
-	sqlite3_bind_int(stmt, 2, numOfWords);
-	sqlite3_step(stmt);
-	sqlite3_finalize(stmt);
-
-	int id = static_cast<int>(sqlite3_last_insert_rowid(db));
-
-	std::string wordName, def;
-	for (int i = 0; i < numOfWords; i++) {
-		std::cout << "Enter the word: ";
-		std::cin >> wordName;
-		std::cout << "Enter the definition: ";
-		std::cin.ignore(); // Ignore the newline character left in the input buffer
-		std::getline(std::cin, def);
-
-		sqlite3_prepare_v2(db, "INSERT INTO Words(wordName, definition, setId) VALUES (?, ?, ?)", -1, &stmt, nullptr);
-		sqlite3_bind_text(stmt, 1, wordName.c_str(), -1, SQLITE_TRANSIENT);
-		sqlite3_bind_text(stmt, 2, def.c_str(), -1, SQLITE_TRANSIENT);
-		sqlite3_bind_int(stmt, 3, id);
-		sqlite3_step(stmt);
-		sqlite3_finalize(stmt);
-		std::cout << std::endl;
-	}
-
-	std::cout << "Congrats, the data has been entered! " << std::endl;
-	pause_console();
+	return CatchEvent(renderer, [this, on_finished](Event event) {
+		if (over) {
+			on_finished(won);
+			return true;
+		}
+		if (event.is_character() && event.character().size() == 1) {
+			char c = event.character()[0];
+			if (std::isalpha(static_cast<unsigned char>(c))) {
+				guessLetter(c);
+				return true;
+			}
+		}
+		return false;
+	});
 }
